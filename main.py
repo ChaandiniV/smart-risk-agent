@@ -17,7 +17,7 @@ def main():
         print("Please set your OpenAI API key in the .env file or as an environment variable.")
 
     # Get the path to the app.py file
-    app_path = Path("agent/app.py").absolute()
+    app_path = Path("app.py").absolute()
 
     if not app_path.exists():
         print(f"Error: Could not find the application file at {app_path}")

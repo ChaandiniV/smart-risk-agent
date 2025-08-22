@@ -1,10 +1,12 @@
-import streamlit as st
 import os
+
+import streamlit as st
 from dotenv import load_dotenv
-from language_handler import LanguageHandler
-from symptom_questioner import SymptomQuestioner
-from risk_analyzer import RiskAnalyzer
-from report_generator import ReportGenerator
+
+from agent.language_handler import LanguageHandler
+from agent.report_generator import ReportGenerator
+from agent.risk_analyzer import RiskAnalyzer
+from agent.symptom_questioner import SymptomQuestioner
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +22,37 @@ st.set_page_config(
     page_icon="👶",
     layout="centered"
 )
+
+st.markdown(
+    """
+    <style>
+      :root { --bg:#0b0f14; --panel:#0f172a; --border:#1f2937; --fg:#e5e7eb; --fg-dim:#94a3b8; --g1:#4cc3ff; --g2:#ff65a3; }
+      body { background: var(--bg); }
+      /* Add generous top padding so header never clips under Streamlit chrome */
+      .block-container { max-width: 920px; padding-top: 56px; padding-bottom: 7.5rem; }
+
+      /* Product wordmark header */
+      .gl-hero { text-align:center; margin: 12px 0 12px; }
+      .gl-wordmark { font-weight: 800; font-size: 28px; letter-spacing: 0.3px; background: linear-gradient(90deg, var(--g1), var(--g2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .gl-tagline { color: var(--fg-dim); font-size: 13px; margin-top: 4px; }
+
+      /* Chat bubbles */
+      .gl-msg { margin: 8px 0; }
+      .gl-assistant { background: rgba(30,41,59,.6); border:1px solid var(--border); color: var(--fg); border-radius: 12px; padding: 14px 16px; }
+      .gl-user { background: rgba(37,99,235,.12); border:1px solid rgba(37,99,235,.35); color:#dbeafe; border-radius: 12px; padding: 14px 16px; }
+      .gl-assistant a, .gl-user a { color:#60a5fa; }
+
+      /* Footer just above input bar */
+      .gl-footer { position: fixed; left:0; right:0; bottom: 52px; text-align:center; color: var(--fg-dim); font-size: 12px; padding: 4px; }
+      @media (max-width:640px){ .block-container { padding-bottom: 8.5rem; } .gl-footer { bottom: 60px; } }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Wordmark header (no external logo)
+st.markdown("<div class='gl-hero'><div class='gl-wordmark'>GraviLog</div><div class='gl-tagline'>Smart Risk Analysis for Pregnancy</div></div>", unsafe_allow_html=True)
+
 
 # Initialize components
 language_handler = LanguageHandler()
@@ -61,10 +94,11 @@ if not st.session_state.language:
     if len(st.session_state.messages) == 0:
         add_assistant_message("Hello! Before we begin, would you like to continue in **English** or **Arabic**?")
 
-# Display chat history
+# Display chat history (styled bubbles)
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        klass = "gl-assistant" if msg["role"] == "assistant" else "gl-user"
+        st.markdown(f"<div class='gl-msg {klass}'>" + msg["content"].replace("\n","\n\n") + "</div>", unsafe_allow_html=True)
 
 # Show download button if report is ready
 if st.session_state.show_download and st.session_state.report_path:
@@ -139,7 +173,7 @@ if prompt := st.chat_input("Type your reply..."):
                 st.session_state.language
             )
             add_assistant_message("✅ Report generated successfully!")
-            
+
             # Store the report path in session state for download button
             st.session_state.report_path = report_path
             st.session_state.show_download = True
@@ -151,6 +185,5 @@ if prompt := st.chat_input("Type your reply..."):
 
     st.rerun()
 
-# Footer
-st.markdown("---")
-st.markdown("© 2025 GraviLog - Smart Risk Analysis for Pregnancy")
+# Footer beneath input bar (fixed)
+st.markdown("<div class='gl-footer'>© 2025 GraviLog - Smart Risk Analysis for Pregnancy</div>", unsafe_allow_html=True)
