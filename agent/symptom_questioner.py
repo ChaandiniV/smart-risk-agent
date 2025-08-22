@@ -1,5 +1,6 @@
 import os
 from openai import OpenAI
+import re
 
 class SymptomQuestioner:
     """
@@ -12,22 +13,22 @@ class SymptomQuestioner:
         # Initialize OpenAI client
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-        # Predefined questions in English
+        # Predefined questions in English - more specific to avoid false positives
         self.default_questions_english = [
-            "Have you experienced headaches or blurry vision this week?",
-            "Have you noticed swelling in your hands, feet, or face?",
-            "What was your last recorded blood pressure or glucose level?",
-            "Have you felt any unusual abdominal pain or contractions?",
-            "Have you noticed any changes in your baby's movement patterns?"
+            "Have you experienced any SEVERE headaches, blurry vision, or spots in your vision this week? (Note: mild headaches are common in pregnancy)",
+            "Have you noticed SUDDEN or SEVERE swelling in your hands, feet, or face? (Note: mild swelling is normal)",
+            "What was your last blood pressure reading? Please provide both numbers (e.g., 120/80) or just the top number if you only know that.",
+            "Have you felt any SEVERE or CONSTANT abdominal pain or contractions? (Note: mild discomfort is normal)",
+            "Have you noticed any SIGNIFICANT decrease in your baby's movement patterns? (Note: some variation is normal)"
         ]
 
-        # Predefined questions in Arabic
+        # Predefined questions in Arabic - more specific to avoid false positives
         self.default_questions_arabic = [
-            "هل عانيت من صداع أو رؤية ضبابية هذا الأسبوع؟",
-            "هل لاحظت تورمًا في يديك أو قدميك أو وجهك؟",
-            "ما هو آخر قياس مسجل لضغط الدم أو مستوى السكر في الدم؟",
-            "هل شعرت بأي ألم غير عادي في البطن أو تقلصات؟",
-            "هل لاحظت أي تغييرات في أنماط حركة طفلك؟"
+            "هل عانيت من صداع شديد أو رؤية ضبابية أو بقع في الرؤية هذا الأسبوع؟ (ملاحظة: الصداع الخفيف شائع في الحمل)",
+            "هل لاحظت تورمًا مفاجئًا أو شديدًا في يديك أو قدميك أو وجهك؟ (ملاحظة: التورم الخفيف طبيعي)",
+            "ما هو آخر قياس لضغط الدم؟ يرجى تقديم الرقمين (مثل 120/80) أو الرقم العلوي فقط إذا كنت تعرفين ذلك فقط.",
+            "هل شعرت بأي ألم شديد أو مستمر في البطن أو تقلصات؟ (ملاحظة: الانزعاج الخفيف طبيعي)",
+            "هل لاحظت أي انخفاض كبير في أنماط حركة طفلك؟ (ملاحظة: بعض التغييرات طبيعية)"
         ]
 
     def get_questions(self, language, user_context=None):
@@ -75,7 +76,7 @@ class SymptomQuestioner:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a prenatal care assistant specializing in risk assessment."},
+                    {"role": "system", "content": "You are a prenatal care assistant specializing in risk assessment. Generate specific questions that distinguish between normal pregnancy symptoms and concerning symptoms."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
@@ -99,41 +100,75 @@ class SymptomQuestioner:
             return default_questions
 
     def _prepare_question_generation_prompt(self, language, user_context):
-        """Prepare the prompt for question generation."""
-        if language == "arabic":
-            prompt = f"""
-            أنت مساعد رعاية ما قبل الولادة متخصص في تقييم المخاطر. بناءً على المعلومات التالية عن المريضة:
+        """
+        Prepare the prompt for generating personalized questions.
+
+        Args:
+            language (str): The selected language
+            user_context (dict): User context information
+
+        Returns:
+            str: Formatted prompt for question generation
+        """
+        context_info = ""
+        if user_context:
+            if "gestational_age" in user_context:
+                context_info += f"\n- Gestational age: {user_context['gestational_age']} weeks"
+            if "medical_history" in user_context:
+                context_info += f"\n- Medical history: {user_context['medical_history']}"
+            if "previous_symptoms" in user_context:
+                context_info += f"\n- Previous symptoms: {user_context['previous_symptoms']}"
+
+        if language == "english":
+            return f"""
+            Generate 3-5 specific symptom questions for a pregnant patient based on the following context:
+            {context_info}
             
-            عمر الحمل: {user_context.get('gestational_age', 'غير معروف')} أسبوع
-            التاريخ الطبي: {user_context.get('medical_history', 'غير معروف')}
-            الأعراض السابقة: {user_context.get('previous_symptoms', 'غير معروف')}
+            Guidelines:
+            - Focus on symptoms that indicate potential complications
+            - Be specific about what constitutes "concerning" vs "normal" symptoms
+            - Include blood pressure monitoring questions
+            - Consider gestational age-appropriate concerns
+            - Use clear, empathetic language
             
-            قم بإنشاء 3-5 أسئلة ذات صلة وشخصية لتقييم المخاطر المحتملة المتعلقة بالحمل. يجب أن تكون الأسئلة مباشرة وواضحة ومكتوبة بلغة متعاطفة.
-            
-            قم بإدراج كل سؤال في سطر منفصل بدون ترقيم أو نقاط.
+            Format each question as a separate line starting with a number.
             """
-        else:  # English
-            prompt = f"""
-            You are a prenatal care assistant specializing in risk assessment. Based on the following information about the patient:
+        else:
+            return f"""
+            Generate 3-5 specific symptom questions in Arabic for a pregnant patient based on the following context:
+            {context_info}
             
-            Gestational age: {user_context.get('gestational_age', 'unknown')} weeks
-            Medical history: {user_context.get('medical_history', 'unknown')}
-            Previous symptoms: {user_context.get('previous_symptoms', 'unknown')}
+            Guidelines:
+            - Focus on symptoms that indicate potential complications
+            - Be specific about what constitutes "concerning" vs "normal" symptoms
+            - Include blood pressure monitoring questions
+            - Consider gestational age-appropriate concerns
+            - Use clear, empathetic language in Arabic
             
-            Create 3-5 relevant and personalized questions to assess potential pregnancy-related risks. Questions should be direct, clear, and written in an empathetic tone.
-            
-            List each question on a separate line without numbering or bullets.
+            Format each question as a separate line starting with a number.
             """
 
-        return prompt
+    def _parse_generated_questions(self, content):
+        """
+        Parse generated questions from LLM response.
 
-    def _parse_generated_questions(self, generated_content):
-        """Parse the generated content to extract questions."""
-        # Split by newlines and filter out empty lines
-        lines = [line.strip() for line in generated_content.split('\n') if line.strip()]
+        Args:
+            content (str): Raw content from LLM response
 
-        # Filter lines that are likely questions (ending with ? or containing question words)
-        questions = [line for line in lines if line.endswith('?') or
-                    any(q_word in line.lower() for q_word in ['what', 'how', 'have', 'has', 'do', 'does', 'did', 'is', 'are', 'were', 'was', 'will', 'would', 'could', 'should', 'can'])]
-
+        Returns:
+            list: List of parsed questions
+        """
+        questions = []
+        lines = content.strip().split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            # Remove numbering and clean up
+            if line and (line[0].isdigit() or line.startswith('-') or line.startswith('•')):
+                # Remove numbering and bullet points
+                question = re.sub(r'^\d+\.?\s*', '', line)
+                question = re.sub(r'^[-•]\s*', '', question)
+                if question:
+                    questions.append(question)
+        
         return questions

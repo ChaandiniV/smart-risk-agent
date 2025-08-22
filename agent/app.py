@@ -40,6 +40,10 @@ if "current_q_index" not in st.session_state:
     st.session_state.current_q_index = 0
 if "risk_result" not in st.session_state:
     st.session_state.risk_result = None
+if "report_path" not in st.session_state:
+    st.session_state.report_path = None
+if "show_download" not in st.session_state:
+    st.session_state.show_download = False
 
 
 # Helper to add assistant messages
@@ -61,6 +65,18 @@ if not st.session_state.language:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+
+# Show download button if report is ready
+if st.session_state.show_download and st.session_state.report_path:
+    import os
+    if os.path.exists(st.session_state.report_path):
+        with open(st.session_state.report_path, "rb") as file:
+            st.download_button(
+                label="📄 Download Report PDF",
+                data=file.read(),
+                file_name=os.path.basename(st.session_state.report_path),
+                mime="application/pdf"
+            )
 
 # Input box
 if prompt := st.chat_input("Type your reply..."):
@@ -115,19 +131,23 @@ if prompt := st.chat_input("Type your reply..."):
         add_user_message(prompt)
 
         if "yes" in prompt.lower():
-            report_url = report_generator.generate_report(
+            report_path = report_generator.generate_report(
                 st.session_state.responses,
                 st.session_state.risk_result["level"],
                 st.session_state.risk_result["explanation"],
                 st.session_state.risk_result["next_steps"],
                 st.session_state.language
             )
-            add_assistant_message(
-                f"✅ Report generated successfully!\n\n"
-                f"[Download Report PDF]({report_url})"
-            )
+            add_assistant_message("✅ Report generated successfully!")
+            
+            # Store the report path in session state for download button
+            st.session_state.report_path = report_path
+            st.session_state.show_download = True
         else:
             add_assistant_message("Okay! You can start over anytime by refreshing the app.")
+            # Reset download state
+            st.session_state.show_download = False
+            st.session_state.report_path = None
 
     st.rerun()
 
