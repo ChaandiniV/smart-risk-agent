@@ -216,5 +216,5 @@ if prompt := st.chat_input("Type your reply..." if st.session_state.language != 
     st.rerun()
 
 # Footer beneath input bar (fixed)
-footer_text = "© 2025 GraviLog - Smart Risk Analysis for Pregnancy" if st.session_state.language != "arabic" else "© 2025 GraviLog - تحليل المخاطر الذكي للحمل"
+footer_text = language_handler.get_footer_text(st.session_state.language) if st.session_state.language else "© 2025 GraviLog - Smart Risk Analysis for Pregnancy"
 st.markdown(f"<div class='gl-footer'>{footer_text}</div>", unsafe_allow_html=True)
