@@ -36,11 +36,16 @@ st.markdown(
       .gl-wordmark { font-weight: 800; font-size: 28px; letter-spacing: 0.3px; background: linear-gradient(90deg, var(--g1), var(--g2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
       .gl-tagline { color: var(--fg-dim); font-size: 13px; margin-top: 4px; }
 
-      /* Chat bubbles */
-      .gl-msg { margin: 8px 0; }
+      /* Chat bubbles - improved for Arabic support */
+      .gl-msg { margin: 8px 0; word-wrap: break-word; overflow-wrap: break-word; }
       .gl-assistant { background: rgba(30,41,59,.6); border:1px solid var(--border); color: var(--fg); border-radius: 12px; padding: 14px 16px; }
       .gl-user { background: rgba(37,99,235,.12); border:1px solid rgba(37,99,235,.35); color:#dbeafe; border-radius: 12px; padding: 14px 16px; }
       .gl-assistant a, .gl-user a { color:#60a5fa; }
+      
+      /* Arabic text support */
+      .gl-arabic { direction: rtl; text-align: right; font-family: 'Arial', 'Tahoma', sans-serif; }
+      .gl-arabic .gl-assistant { text-align: right; }
+      .gl-arabic .gl-user { text-align: right; }
 
       /* Footer just above input bar */
       .gl-footer { position: fixed; left:0; right:0; bottom: 52px; text-align:center; color: var(--fg-dim); font-size: 12px; padding: 4px; }
@@ -92,45 +97,54 @@ def add_user_message(content):
 # 1. Start the conversation
 if not st.session_state.language:
     if len(st.session_state.messages) == 0:
-        add_assistant_message("Hello! Before we begin, would you like to continue in **English** or **Arabic**?")
+        add_assistant_message("Hello! Before we begin, would you like to continue in **English** or **Arabic**? \n\nمرحباً! قبل أن نبدأ، هل تريد المتابعة باللغة **الإنجليزية** أم **العربية**؟")
 
-# Display chat history (styled bubbles)
+# Display chat history (styled bubbles) with Arabic support
+arabic_class = "gl-arabic" if st.session_state.language == "arabic" else ""
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         klass = "gl-assistant" if msg["role"] == "assistant" else "gl-user"
-        st.markdown(f"<div class='gl-msg {klass}'>" + msg["content"].replace("\n","\n\n") + "</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='gl-msg {klass} {arabic_class}'>" + msg["content"].replace("\n","\n\n") + "</div>", unsafe_allow_html=True)
 
 # Show download button if report is ready
 if st.session_state.show_download and st.session_state.report_path:
     import os
     if os.path.exists(st.session_state.report_path):
         with open(st.session_state.report_path, "rb") as file:
+            download_text = "📄 Download Report PDF" if st.session_state.language == "english" else "📄 تنزيل تقرير PDF"
             st.download_button(
-                label="📄 Download Report PDF",
+                label=download_text,
                 data=file.read(),
                 file_name=os.path.basename(st.session_state.report_path),
                 mime="application/pdf"
             )
 
 # Input box
-if prompt := st.chat_input("Type your reply..."):
+if prompt := st.chat_input("Type your reply..." if st.session_state.language != "arabic" else "اكتب ردك هنا..."):
 
     # Case 1: Language selection
     if st.session_state.language is None:
         add_user_message(prompt)
 
-        if prompt.strip().lower().startswith("eng"):
+        if any(word in prompt.lower() for word in ["eng", "english", "انجليزية", "إنجليزية"]):
             st.session_state.language = "english"
             add_assistant_message(language_handler.get_introduction("english"))
             st.session_state.questions = symptom_questioner.get_questions("english")
+            # Ask first question
+            if st.session_state.questions:
+                add_assistant_message(st.session_state.questions[0])
 
-        elif prompt.strip().lower().startswith("ara"):
+        elif any(word in prompt.lower() for word in ["ara", "arabic", "عربية", "العربية"]):
             st.session_state.language = "arabic"
             add_assistant_message(language_handler.get_introduction("arabic"))
             st.session_state.questions = symptom_questioner.get_questions("arabic")
+            # Ask first question
+            if st.session_state.questions:
+                add_assistant_message(st.session_state.questions[0])
 
         else:
-            add_assistant_message("Please choose either English or Arabic.")
+            add_assistant_message("Please choose either English or Arabic.\n\nيرجى الاختيار بين الإنجليزية أو العربية.")
 
     # Case 2: Symptom questioning
     elif st.session_state.risk_result is None and st.session_state.current_q_index < len(st.session_state.questions):
@@ -144,27 +158,40 @@ if prompt := st.chat_input("Type your reply..."):
             next_q = st.session_state.questions[st.session_state.current_q_index]
             add_assistant_message(next_q)
         else:
-            # Analyze risk
-            risk_result = risk_analyzer.analyze_risk(st.session_state.responses)
+            # Analyze risk with language context
+            risk_result = risk_analyzer.analyze_risk(st.session_state.responses, st.session_state.language)
             st.session_state.risk_result = risk_result
 
             risk_color = {
                 "Low": "🟢",
-                "Medium": "🟠",
+                "Medium": "🟠", 
                 "High": "🔴"
             }
-            add_assistant_message(
-                f"**Current risk level:** {risk_color[risk_result['level']]} {risk_result['level']}\n\n"
-                f"**Explanation:** {risk_result['explanation']}\n\n"
-                f"**Next Steps:** {risk_result['next_steps']}"
-            )
-            add_assistant_message("Would you like me to generate a report PDF for your doctor?")
+            
+            # Translate risk level
+            translated_risk_level = language_handler.translate_risk_level(risk_result['level'], st.session_state.language)
+            
+            if st.session_state.language == "english":
+                add_assistant_message(
+                    f"**Current risk level:** {risk_color[risk_result['level']]} {translated_risk_level}\n\n"
+                    f"**Explanation:** {risk_result['explanation']}\n\n"
+                    f"**Next Steps:** {risk_result['next_steps']}"
+                )
+                add_assistant_message("Would you like me to generate a report PDF for your doctor?")
+            else:  # Arabic
+                add_assistant_message(
+                    f"**{language_handler.get_risk_level_text('arabic')}:** {risk_color[risk_result['level']]} {translated_risk_level}\n\n"
+                    f"**{language_handler.get_explanation_header('arabic')}:** {risk_result['explanation']}\n\n"
+                    f"**{language_handler.get_next_steps_header('arabic')}:** {risk_result['next_steps']}"
+                )
+                add_assistant_message(language_handler.get_generate_report_text('arabic') + "؟")
 
     # Case 3: After risk result (PDF step)
     elif st.session_state.risk_result is not None:
         add_user_message(prompt)
 
-        if "yes" in prompt.lower():
+        # Check for yes in both languages
+        if any(word in prompt.lower() for word in ["yes", "نعم", "اجل", "موافق"]):
             report_path = report_generator.generate_report(
                 st.session_state.responses,
                 st.session_state.risk_result["level"],
@@ -172,13 +199,16 @@ if prompt := st.chat_input("Type your reply..."):
                 st.session_state.risk_result["next_steps"],
                 st.session_state.language
             )
-            add_assistant_message("✅ Report generated successfully!")
+            
+            success_message = "✅ Report generated successfully!" if st.session_state.language == "english" else "✅ تم إنشاء التقرير بنجاح!"
+            add_assistant_message(success_message)
 
             # Store the report path in session state for download button
             st.session_state.report_path = report_path
             st.session_state.show_download = True
         else:
-            add_assistant_message("Okay! You can start over anytime by refreshing the app.")
+            goodbye_message = "Okay! You can start over anytime by refreshing the app." if st.session_state.language == "english" else "حسناً! يمكنك البدء من جديد في أي وقت عن طريق تحديث التطبيق."
+            add_assistant_message(goodbye_message)
             # Reset download state
             st.session_state.show_download = False
             st.session_state.report_path = None
@@ -186,4 +216,5 @@ if prompt := st.chat_input("Type your reply..."):
     st.rerun()
 
 # Footer beneath input bar (fixed)
-st.markdown("<div class='gl-footer'>© 2025 GraviLog - Smart Risk Analysis for Pregnancy</div>", unsafe_allow_html=True)
+footer_text = "© 2025 GraviLog - Smart Risk Analysis for Pregnancy" if st.session_state.language != "arabic" else "© 2025 GraviLog - تحليل المخاطر الذكي للحمل"
+st.markdown(f"<div class='gl-footer'>{footer_text}</div>", unsafe_allow_html=True)
